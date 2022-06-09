@@ -1,0 +1,78 @@
+﻿@using System.Threading
+@inject Microsoft.JSInterop.IJSRuntime jsInterop
+@inject IHttpClientFactory _httpClientFactory;
+@implements IAsyncDisposable
+
+<div class="container-fluid">
+    <img class="rounded img-fluid" id="@id"/>
+</div>
+
+@code {
+
+    [Parameter]
+    [EditorRequired]
+    public string id { get; set; }
+
+    private string [] SourceUrl = {
+        "https://i.imgur.com/6FMRBcg.jpeg",
+        "https://i.imgur.com/jZu3Nzw.jpeg",
+        "https://i.imgur.com/hNJd0Fg.jpeg"
+    };
+
+    private Timer timer;
+    private AutoResetEvent clock;
+    private Task refresh;
+    private int ChangeCount = 0;
+
+    private async Task<bool> SetImageUsingStreamingAsync(HttpClient httpClient)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, SourceUrl[ChangeCount%SourceUrl.Length]);
+        ++ChangeCount;
+        var response = await httpClient.SendAsync(request);
+        if (response.StatusCode == System.Net.HttpStatusCode.OK)
+        {
+            if (response.Content.Headers.ContentLength > 0)
+            {
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var dotnetImageStream = new DotNetStreamReference(stream);
+                await jsInterop.InvokeVoidAsync("setImageUsingStreaming", id, dotnetImageStream);
+                return true;
+            }     
+        }
+
+        return false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        clock = new (false);
+        timer = new Timer(_ =>
+        {
+            clock.Set();
+        }, this, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(0.5));
+
+        refresh = Task.Run(async () =>
+        {
+            while (timer is not null)
+            {
+                clock.WaitOne();
+                if (timer is not null)
+                {
+                    var httpClient = _httpClientFactory.CreateClient();
+                    if (await SetImageUsingStreamingAsync(httpClient))
+                        await InvokeAsync(StateHasChanged);
+                }
+            }
+        });
+
+        await base.OnInitializedAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        timer?.Dispose();
+        timer = null;
+        clock.Set();
+        await refresh;
+    }
+}
