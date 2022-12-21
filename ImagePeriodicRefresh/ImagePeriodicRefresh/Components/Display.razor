@@ -3,7 +3,7 @@
 @inject IHttpClientFactory _httpClientFactory;
 @implements IAsyncDisposable
 
-<div class="container-fluid">
+<div class="container-fluid" >
     <img class="rounded img-fluid" id="@id"/>
 </div>
 
@@ -33,9 +33,13 @@
         {
             if (response.Content.Headers.ContentLength > 0)
             {
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var dotnetImageStream = new DotNetStreamReference(stream);
-                await jsInterop.InvokeVoidAsync("setImageUsingStreaming", id, dotnetImageStream);
+                await InvokeAsync(async () =>
+                {
+                    using var stream = await response.Content.ReadAsStreamAsync();
+                    using var dotnetImageStream = new DotNetStreamReference(stream);
+                    await jsInterop.InvokeVoidAsync("setImageUsingStreaming", id, dotnetImageStream);
+                    StateHasChanged();
+                });
                 return true;
             }     
         }
@@ -49,20 +53,28 @@
         timer = new Timer(_ =>
         {
             clock.Set();
-        }, this, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(0.5));
+        }, this, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(0.2));
 
         refresh = Task.Run(async () =>
         {
             while (timer is not null)
             {
                 clock.WaitOne();
-                if (timer is not null)
+
+                try
                 {
-                    var httpClient = _httpClientFactory.CreateClient();
-                    if (await SetImageUsingStreamingAsync(httpClient))
-                        await InvokeAsync(StateHasChanged);
+                    if (timer is not null)
+                    {
+                        using var httpClient = _httpClientFactory.CreateClient();
+                        await SetImageUsingStreamingAsync(httpClient);
+                    }
                 }
-            }
+                catch (Exception ex)
+                {
+                    // what is wrong?
+                    Console.WriteLine(ex.Message);
+                }
+            }   
         });
 
         await base.OnInitializedAsync();

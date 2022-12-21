@@ -25,7 +25,7 @@
 	<script src="_framework/blazor.webview.js" autostart="false"></script>
 
 	<script>
-		// see index.razor for usage of this method
+		// see display.razor for usage of this method
 		async function setImageUsingStreaming(imageElementId, imageStream) {
 			const arrayBuffer = await imageStream.arrayBuffer();
 			const blob = new Blob([arrayBuffer]);
